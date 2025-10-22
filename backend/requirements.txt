@@ -1,0 +1,5 @@
+flask>=2.2
+python-chess>=1.999
+torch>=2.0; platform_system != 'Windows'
+torchvision>=0.15; platform_system != 'Windows'
+numpy>=1.23
