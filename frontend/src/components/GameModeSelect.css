@@ -1,0 +1,133 @@
+/* ===== Mode Selection Screen ===== */
+.mode-select {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 80vh;
+  padding: 2rem;
+  animation: fadeIn 0.4s ease-out;
+}
+
+.mode-select__header {
+  text-align: center;
+  margin-bottom: 2.5rem;
+}
+
+.mode-select__title {
+  font-size: 2.2rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  background: linear-gradient(135deg, var(--text-primary) 0%, var(--accent) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 0.5rem;
+}
+
+.mode-select__subtitle {
+  font-size: 1rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 500;
+}
+
+/* ===== Cards Grid ===== */
+.mode-select__cards {
+  display: flex;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* ===== Individual Card ===== */
+.mode-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 200px;
+  padding: 2rem 1.5rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: all 0.25s ease;
+  font-family: var(--font-sans);
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.mode-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  pointer-events: none;
+}
+
+.mode-card--white::before {
+  background: radial-gradient(circle at 50% 30%, rgba(255, 255, 255, 0.06) 0%, transparent 70%);
+}
+
+.mode-card--black::before {
+  background: radial-gradient(circle at 50% 30%, rgba(124, 106, 239, 0.08) 0%, transparent 70%);
+}
+
+.mode-card--neutral::before {
+  background: radial-gradient(circle at 50% 30%, rgba(239, 166, 106, 0.08) 0%, transparent 70%);
+}
+
+.mode-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lg), 0 8px 32px rgba(124, 106, 239, 0.15);
+  border-color: var(--accent);
+}
+
+.mode-card:hover::before {
+  opacity: 1;
+}
+
+.mode-card:active {
+  transform: translateY(-1px);
+}
+
+.mode-card__icon {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+  transition: transform 0.25s ease;
+}
+
+.mode-card:hover .mode-card__icon {
+  transform: scale(1.12);
+}
+
+.mode-card__title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.4rem;
+  letter-spacing: -0.01em;
+}
+
+.mode-card__desc {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+/* ===== Responsive ===== */
+@media (max-width: 700px) {
+  .mode-select__cards {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .mode-card {
+    width: 260px;
+  }
+}

@@ -1,0 +1,96 @@
+/* ===== Captured Material Panel ===== */
+.captured-material {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: 1rem 0.75rem;
+  width: 60px;
+  align-self: stretch;
+  min-height: 520px;
+}
+
+/* ===== Section (one per side) ===== */
+.captured-material__section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 1;
+}
+
+.captured-material__label {
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* ===== Pieces ===== */
+.captured-material__pieces {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.captured-material__piece {
+  font-size: 1.3rem;
+  line-height: 1;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
+}
+
+.captured-material__piece--white {
+  color: #ffffff;
+  filter:
+    drop-shadow(0 0 1px rgba(0, 0, 0, 0.8)) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
+}
+
+.captured-material__piece--black {
+  color: #1a1a2e;
+  filter:
+    drop-shadow(0 0 1px rgba(255, 255, 255, 0.15)) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4));
+}
+
+.captured-material__empty {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  opacity: 0.4;
+}
+
+/* ===== Material Advantage ===== */
+.captured-material__advantage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.4rem 0;
+}
+
+.captured-material__value {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 100px;
+  padding: 0.2rem 0.5rem;
+  min-width: 2rem;
+  text-align: center;
+}
+
+.captured-material__value--white {
+  color: #e8e6f0;
+  border-color: rgba(232, 230, 240, 0.2);
+}
+
+.captured-material__value--black {
+  color: var(--accent);
+  border-color: var(--border-accent);
+}

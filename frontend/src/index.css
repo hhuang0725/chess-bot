@@ -1,0 +1,101 @@
+/* ===== CSS Reset & Variables ===== */
+:root {
+  --bg-primary: #0f0f13;
+  --bg-secondary: #1a1a24;
+  --bg-tertiary: #242434;
+  --bg-elevated: #2a2a3d;
+
+  --text-primary: #e8e6f0;
+  --text-secondary: #9d9baf;
+  --text-muted: #6b6980;
+
+  --accent: #7c6aef;
+  --accent-glow: rgba(124, 106, 239, 0.25);
+  --accent-hover: #9585f5;
+
+  --board-light: #e8dcc8;
+  --board-dark: #7d945d;
+  --board-light-hover: #f0e6d4;
+  --board-dark-hover: #8ba368;
+
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-accent: rgba(124, 106, 239, 0.3);
+
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 20px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 40px rgba(0, 0, 0, 0.5);
+  --shadow-glow: 0 0 30px rgba(124, 106, 239, 0.15);
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+  --transition-fast: 150ms ease;
+  --transition-base: 250ms ease;
+}
+
+*,
+*::before,
+*::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: var(--font-sans);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Subtle animated background */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background:
+    radial-gradient(ellipse at 20% 20%, rgba(124, 106, 239, 0.08) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 80%, rgba(100, 200, 180, 0.05) 0%, transparent 50%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+#root {
+  position: relative;
+  z-index: 1;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--bg-elevated);
+}
