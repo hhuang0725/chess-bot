@@ -1,6 +1,7 @@
 // ---- Bot API — communicates with the Lambda chess engine ----
 
 const API_URL = import.meta.env.VITE_BOT_API_URL || 'http://localhost:9000/2015-03-31/functions/function/invocations';
+const API_KEY = import.meta.env.VITE_API_KEY || '';
 
 const FILES_STR = 'abcdefgh';
 const RANKS_STR = '87654321';
@@ -83,7 +84,10 @@ export async function getBotMove(gameState, searches = 100) {
 
   const response = await fetch(API_URL, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(API_KEY ? { 'x-api-key': API_KEY } : {}),
+    },
     body: JSON.stringify({ fen, searches }),
   });
 

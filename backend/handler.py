@@ -15,6 +15,7 @@ from model.mcts import MCTS
 
 MODEL_PATH = os.environ.get("MODEL_PATH", "/var/task/model/inception_net_pretrained.pt")
 DEFAULT_SEARCHES = int(os.environ.get("DEFAULT_SEARCHES", "100"))
+ALLOWED_ORIGIN = os.environ.get("ALLOWED_ORIGIN", "*")
 
 # Initialize model once globally
 device = torch.device("cpu")
@@ -71,8 +72,8 @@ def lambda_handler(event, context):
       "statusCode": 200,
       "headers": {
         "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Headers": "Content-Type",
+        "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
+        "Access-Control-Allow-Headers": "Content-Type,x-api-key",
         "Access-Control-Allow-Methods": "POST, OPTIONS",
       },
       "body": json.dumps({
@@ -89,8 +90,8 @@ def _error(status_code, message):
     "statusCode": status_code,
     "headers": {
       "Content-Type": "application/json",
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Headers": "Content-Type",
+      "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
+      "Access-Control-Allow-Headers": "Content-Type,x-api-key",
       "Access-Control-Allow-Methods": "POST, OPTIONS",
     },
     "body": json.dumps({"error": message}),

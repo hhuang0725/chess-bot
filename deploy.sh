@@ -2,17 +2,21 @@
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
-# chess-bot2 — deploy backend to AWS (ECR + Lambda + API Gateway HTTP API)
+# chess-bot — deploy backend to AWS (ECR + Lambda + API Gateway REST API)
 # Usage: ./deploy.sh
 # Idempotent: safe to re-run to update the Lambda image.
 # ---------------------------------------------------------------------------
 
 AWS_REGION="us-east-1"
-ECR_REPO="chess-bot2"
-LAMBDA_FUNCTION="chess-bot2"
-LAMBDA_ROLE_NAME="chess-bot2-lambda-role"
-API_NAME="chess-bot2"
+ECR_REPO="chess-bot"
+LAMBDA_FUNCTION="chess-bot"
+LAMBDA_ROLE_NAME="chess-bot-lambda-role"
+API_NAME="chess-bot"
 IMAGE_TAG="latest"
+FRONTEND_ORIGIN="https://chess-bot-frontend-1762710951.s3.us-east-1.amazonaws.com"
+API_KEY_NAME="chess-bot-key"
+USAGE_PLAN_NAME="chess-bot-usage-plan"
+STAGE_NAME="prod"
 
 # ---- 1. Resolve AWS account ID ------------------------------------------
 echo "==> Resolving AWS account..."
@@ -99,82 +103,203 @@ else
 fi
 echo "    Lambda ready."
 
-# ---- 5. API Gateway HTTP API --------------------------------------------
-echo "==> Configuring API Gateway..."
+# ---- 4b. Lambda reserved concurrency (hard cap on parallel MCTS runs) ---
+echo "==> Setting Lambda reserved concurrency..."
+TOTAL_CONCURRENCY=$(aws lambda get-account-settings \
+  --region "$AWS_REGION" --query AccountLimit.ConcurrentExecutions --output text)
+HEADROOM=$(( TOTAL_CONCURRENCY - 10 ))
+if [ "$HEADROOM" -ge 1 ]; then
+  RESERVED=$(( HEADROOM < 5 ? HEADROOM : 5 ))
+  aws lambda put-function-concurrency \
+    --function-name "$LAMBDA_FUNCTION" \
+    --reserved-concurrent-executions "$RESERVED" \
+    --region "$AWS_REGION" --output text > /dev/null
+  echo "    Reserved concurrency set to $RESERVED."
+else
+  echo "    WARNING: Account concurrency limit ($TOTAL_CONCURRENCY) too low to reserve — skipping."
+fi
+
+# ---- 4c. Lambda environment variables -----------------------------------
+echo "==> Setting Lambda environment variables..."
+# MSYS_NO_PATHCONV prevents Git Bash on Windows from mangling /var/task/... paths
+MSYS_NO_PATHCONV=1 aws lambda update-function-configuration \
+  --function-name "$LAMBDA_FUNCTION" \
+  --environment "Variables={MODEL_PATH=/var/task/model/inception_net_pretrained.pt,DEFAULT_SEARCHES=100,ALLOWED_ORIGIN=$FRONTEND_ORIGIN}" \
+  --region "$AWS_REGION" --output text > /dev/null
+aws lambda wait function-updated \
+  --function-name "$LAMBDA_FUNCTION" --region "$AWS_REGION"
+
+# ---- 5. REST API Gateway ------------------------------------------------
+echo "==> Configuring REST API Gateway..."
 LAMBDA_ARN=$(aws lambda get-function \
   --function-name "$LAMBDA_FUNCTION" \
-  --region "$AWS_REGION" \
-  --query Configuration.FunctionArn --output text)
+  --region "$AWS_REGION" --query Configuration.FunctionArn --output text)
 
-# Reuse existing API if already created
-API_ID=$(aws apigatewayv2 get-apis \
+# 5a. Create or reuse REST API
+API_ID=$(aws apigateway get-rest-apis \
   --region "$AWS_REGION" \
-  --query "Items[?Name=='$API_NAME'].ApiId" \
-  --output text)
+  --query "items[?name=='$API_NAME'].id" --output text)
 
 if [ -z "$API_ID" ]; then
-  echo "    Creating HTTP API..."
-  API_ID=$(aws apigatewayv2 create-api \
+  echo "    Creating REST API..."
+  API_ID=$(aws apigateway create-rest-api \
     --name "$API_NAME" \
-    --protocol-type HTTP \
-    --cors-configuration \
-      AllowOrigins='["*"]',AllowMethods='["POST","OPTIONS"]',AllowHeaders='["Content-Type"]' \
-    --region "$AWS_REGION" \
-    --query ApiId --output text)
+    --endpoint-configuration types=REGIONAL \
+    --region "$AWS_REGION" --query id --output text)
 else
   echo "    Reusing existing API: $API_ID"
 fi
 
-# Lambda integration
-INTEGRATION_ID=$(aws apigatewayv2 create-integration \
-  --api-id "$API_ID" \
-  --integration-type AWS_PROXY \
-  --integration-uri "$LAMBDA_ARN" \
-  --payload-format-version "2.0" \
-  --region "$AWS_REGION" \
-  --query IntegrationId --output text)
+# 5b. Root resource ID
+ROOT_ID=$(aws apigateway get-resources \
+  --rest-api-id "$API_ID" --region "$AWS_REGION" \
+  --query "items[?path=='/'].id" --output text)
 
-# Route: POST /move
-aws apigatewayv2 create-route \
-  --api-id "$API_ID" \
-  --route-key "POST /move" \
-  --target "integrations/$INTEGRATION_ID" \
-  --region "$AWS_REGION" \
-  --output text > /dev/null
+# 5c. /move resource (idempotent)
+RESOURCE_ID=$(aws apigateway get-resources \
+  --rest-api-id "$API_ID" --region "$AWS_REGION" \
+  --query "items[?path=='/move'].id" --output text)
 
-# $default stage with auto-deploy
-aws apigatewayv2 create-stage \
-  --api-id "$API_ID" \
-  --stage-name '$default' \
-  --auto-deploy \
-  --region "$AWS_REGION" \
-  --output text > /dev/null
+if [ -z "$RESOURCE_ID" ]; then
+  RESOURCE_ID=$(aws apigateway create-resource \
+    --rest-api-id "$API_ID" --parent-id "$ROOT_ID" \
+    --path-part "move" --region "$AWS_REGION" --query id --output text)
+fi
 
-# ---- 6. Grant API Gateway permission to invoke Lambda -------------------
+# 5d. POST method — API key required (Gateway returns 403 without valid key)
+aws apigateway put-method \
+  --rest-api-id "$API_ID" --resource-id "$RESOURCE_ID" \
+  --http-method POST --authorization-type NONE --api-key-required \
+  --region "$AWS_REGION" 2>/dev/null || true
+
+# 5e. Lambda proxy integration for POST
+aws apigateway put-integration \
+  --rest-api-id "$API_ID" --resource-id "$RESOURCE_ID" \
+  --http-method POST --type AWS_PROXY --integration-http-method POST \
+  --uri "arn:aws:apigateway:$AWS_REGION:lambda:path/2015-03-31/functions/$LAMBDA_ARN/invocations" \
+  --region "$AWS_REGION" 2>/dev/null || true
+
+# 5f. OPTIONS method — no API key required (browser preflight never sends key)
+aws apigateway put-method \
+  --rest-api-id "$API_ID" --resource-id "$RESOURCE_ID" \
+  --http-method OPTIONS --authorization-type NONE --no-api-key-required \
+  --region "$AWS_REGION" 2>/dev/null || true
+
+aws apigateway put-integration \
+  --rest-api-id "$API_ID" --resource-id "$RESOURCE_ID" \
+  --http-method OPTIONS --type MOCK \
+  --request-templates '{"application/json":"{\"statusCode\":200}"}' \
+  --region "$AWS_REGION" 2>/dev/null || true
+
+aws apigateway put-method-response \
+  --rest-api-id "$API_ID" --resource-id "$RESOURCE_ID" \
+  --http-method OPTIONS --status-code 200 \
+  --response-parameters '{
+    "method.response.header.Access-Control-Allow-Headers": false,
+    "method.response.header.Access-Control-Allow-Methods": false,
+    "method.response.header.Access-Control-Allow-Origin": false
+  }' --region "$AWS_REGION" 2>/dev/null || true
+
+# Note: values need literal single quotes inside the JSON strings (AWS requirement)
+CORS_PARAMS=$(cat <<EOF
+{
+  "method.response.header.Access-Control-Allow-Headers": "'Content-Type,x-api-key'",
+  "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,POST'",
+  "method.response.header.Access-Control-Allow-Origin": "'$FRONTEND_ORIGIN'"
+}
+EOF
+)
+aws apigateway put-integration-response \
+  --rest-api-id "$API_ID" --resource-id "$RESOURCE_ID" \
+  --http-method OPTIONS --status-code 200 \
+  --response-parameters "$CORS_PARAMS" \
+  --region "$AWS_REGION" 2>/dev/null || true
+
+# 5g. Deploy to stage (creates stage if new, updates if exists)
+echo "    Deploying to stage: $STAGE_NAME"
+aws apigateway create-deployment \
+  --rest-api-id "$API_ID" --stage-name "$STAGE_NAME" \
+  --region "$AWS_REGION" --output text > /dev/null
+
+# ---- 6. API Key + Usage Plan --------------------------------------------
+echo "==> Configuring API key and usage plan..."
+
+# 6a. Create or reuse API key
+KEY_ID=$(aws apigateway get-api-keys \
+  --region "$AWS_REGION" \
+  --query "items[?name=='$API_KEY_NAME'].id" --output text)
+
+if [ -z "$KEY_ID" ]; then
+  KEY_ID=$(aws apigateway create-api-key \
+    --name "$API_KEY_NAME" --enabled \
+    --region "$AWS_REGION" --query id --output text)
+  echo "    API key created: $KEY_ID"
+else
+  echo "    Reusing existing key: $KEY_ID"
+fi
+
+API_KEY_VALUE=$(aws apigateway get-api-key \
+  --api-key "$KEY_ID" --include-value \
+  --region "$AWS_REGION" --query value --output text)
+
+# 6b. Create or reuse usage plan (throttle: 2 req/s sustained, burst 5)
+PLAN_ID=$(aws apigateway get-usage-plans \
+  --region "$AWS_REGION" \
+  --query "items[?name=='$USAGE_PLAN_NAME'].id" --output text)
+
+if [ -z "$PLAN_ID" ]; then
+  PLAN_ID=$(aws apigateway create-usage-plan \
+    --name "$USAGE_PLAN_NAME" \
+    --throttle burstLimit=5,rateLimit=2 \
+    --api-stages "apiId=$API_ID,stage=$STAGE_NAME" \
+    --region "$AWS_REGION" --query id --output text)
+  echo "    Usage plan created: $PLAN_ID"
+else
+  echo "    Reusing usage plan: $PLAN_ID"
+  aws apigateway update-usage-plan \
+    --usage-plan-id "$PLAN_ID" \
+    --patch-operations \
+      op=replace,path=/throttle/burstLimit,value=5 \
+      op=replace,path=/throttle/rateLimit,value=2 \
+    --region "$AWS_REGION" --output text > /dev/null
+fi
+
+# 6c. Associate key with usage plan (idempotent)
+aws apigateway create-usage-plan-key \
+  --usage-plan-id "$PLAN_ID" --key-type API_KEY --key-id "$KEY_ID" \
+  --region "$AWS_REGION" --output text > /dev/null 2>/dev/null || true
+
+# ---- 7. Grant API Gateway permission to invoke Lambda -------------------
 echo "==> Granting API Gateway invoke permission..."
 aws lambda add-permission \
   --function-name "$LAMBDA_FUNCTION" \
   --statement-id "apigateway-invoke" \
   --action lambda:InvokeFunction \
   --principal apigateway.amazonaws.com \
-  --source-arn "arn:aws:execute-api:$AWS_REGION:$AWS_ACCOUNT_ID:$API_ID/*" \
-  --region "$AWS_REGION" \
-  --output text > /dev/null \
+  --source-arn "arn:aws:execute-api:$AWS_REGION:$AWS_ACCOUNT_ID:$API_ID/$STAGE_NAME/POST/move" \
+  --region "$AWS_REGION" --output text > /dev/null \
   2>/dev/null || true
 
-# ---- 7. Print endpoint --------------------------------------------------
-ENDPOINT="https://$API_ID.execute-api.$AWS_REGION.amazonaws.com/move"
+# ---- 8. Print endpoint --------------------------------------------------
+ENDPOINT="https://$API_ID.execute-api.$AWS_REGION.amazonaws.com/$STAGE_NAME/move"
 echo ""
 echo "====================================================="
 echo " Deployment complete!"
 echo "====================================================="
 echo " Endpoint:  $ENDPOINT"
+echo " API Key:   $API_KEY_VALUE"
 echo ""
-echo " Test:"
-echo "   curl -X POST $ENDPOINT \\"
+echo " Build frontend:"
+echo "   VITE_BOT_API_URL=$ENDPOINT VITE_API_KEY=$API_KEY_VALUE npm run build --prefix frontend"
+echo ""
+echo " Test (no key → 403):"
+echo "   curl -s -o /dev/null -w \"%{http_code}\" -X POST $ENDPOINT \\"
 echo "     -H 'Content-Type: application/json' \\"
-echo "     -d '{\"fen\":\"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1\",\"searches\":10}'"
+echo "     -d '{\"fen\":\"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1\"}'"
 echo ""
-echo " Frontend env var:"
-echo "   VITE_BOT_API_URL=$ENDPOINT"
+echo " Test (with key → 200):"
+echo "   curl -s -X POST $ENDPOINT \\"
+echo "     -H 'Content-Type: application/json' \\"
+echo "     -H \"x-api-key: $API_KEY_VALUE\" \\"
+echo "     -d '{\"fen\":\"rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1\",\"searches\":10}'"
 echo "====================================================="
